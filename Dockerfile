@@ -1,11 +1,11 @@
 # Install dependencies into the image so deployment can run without a virtualenv.
 FROM python:3.12-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY docdesk ./docdesk
-RUN useradd --uid 10001 --create-home docdesk && mkdir /data && chown docdesk /data
+RUN useradd --uid 10001 --create-home docdesk
 USER docdesk
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "docdesk.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--limit-concurrency", "16", "--no-proxy-headers"]

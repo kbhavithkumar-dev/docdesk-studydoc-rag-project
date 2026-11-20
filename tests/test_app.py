@@ -1,15 +1,22 @@
 """Run with python -m unittest discover -s tests -v. No API key is required."""
 
 from dataclasses import replace
+from contextlib import contextmanager
 from io import BytesIO
-import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import sqlite3
+import json
+import os
+from uuid import uuid4
 import unittest
 
 from docx import Document
 from fastapi.testclient import TestClient
 import httpx
+import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 from pypdf import PdfWriter
 from pypdf.generic import (
     DecodedStreamObject, DictionaryObject, NameObject,
@@ -18,6 +25,8 @@ from pypdf.generic import (
 from docdesk.documents import make_chunks
 from docdesk.main import create_app
 from docdesk.settings import DIMENSIONS, MAX_UPLOAD_BYTES, Settings
+from docdesk.store import Store
+from scripts.import_sqlite import copy_index
 
 HEADERS = {"X-DocDesk-Request": "1"}
 BOOK = "Students may borrow up to four books."
@@ -63,10 +72,26 @@ class FakeGemini:
         }]})
 
 
+TEST_DATABASE_URL = os.getenv("DOCDESK_TEST_DATABASE_URL")
+
+
+@contextmanager
+def isolated_schema():
+    # A unique schema per test avoids deleting any existing user tables.
+    schema = "docdesk_test_" + uuid4().hex
+    with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            yield make_conninfo(TEST_DATABASE_URL, options=f"-c search_path={schema}")
+        finally:
+            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+@unittest.skipUnless(TEST_DATABASE_URL, "Set DOCDESK_TEST_DATABASE_URL to test against PostgreSQL")
 class AppTests(unittest.TestCase):
     def setUp(self):
-        self.temp = self.enterContext(TemporaryDirectory())
-        self.settings = Settings(data_dir=Path(self.temp), api_key="test-key")
+        database_url = self.enterContext(isolated_schema())
+        self.settings = Settings(database_url=database_url, api_key="test-key")
         self.fake = FakeGemini()
         self.client = self.enterContext(self.session(self.settings))
 
@@ -108,12 +133,43 @@ class AppTests(unittest.TestCase):
         self.assertEqual(repeated.json()["document"], original)
         self.assertEqual(len(self.fake.calls), 1)
 
+    def test_readiness_checks_the_database(self):
+        self.assertEqual(self.client.get("/healthz").json(), {"status": "ok"})
+        self.assertEqual(self.client.get("/readyz").json(), {"status": "ready"})
+
     def test_database_survives_new_app(self):
         document = self.upload().json()["document"]
         with self.session(self.settings) as restarted:
             self.assertEqual(restarted.get("/api/documents").json()["documents"], [document])
             result = restarted.post("/api/ask", json={"question": "How many books?"}).json()
             self.assertEqual(result["statements"][0]["quote"], BOOK)
+
+    def test_migrate_sqlite_index_without_calling_gemini(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "docdesk.sqlite3"
+            old = sqlite3.connect(source)
+            try:
+                old.executescript("""
+                    CREATE TABLE index_config (name TEXT, value TEXT);
+                    CREATE TABLE documents (id TEXT, filename TEXT, digest TEXT, chunk_count INT, added_at TEXT);
+                    CREATE TABLE chunks (document_id TEXT, number INT, location TEXT, text TEXT, vector BLOB);
+                    INSERT INTO index_config VALUES ('embedding', '1/gemini-embedding-001/768');
+                    INSERT INTO documents VALUES ('abc', 'legacy.txt', 'old-digest', 1, '2025-01-01T00:00:00Z');
+                """)
+                old.execute("INSERT INTO chunks VALUES (?, ?, ?, ?, ?)", ("abc", 1, "Document body", BOOK, bytes(DIMENSIONS * 4)))
+                old.commit()
+            finally:
+                old.close()
+            store = Store(self.settings.database_url, self.settings.embedding_model)
+            try:
+                store.open()
+                self.assertEqual(copy_index(source, store), 1)
+                with self.assertRaisesRegex(ValueError, "destination contains documents"):
+                    copy_index(source, store)
+            finally:
+                store.close()
+        self.assertEqual(self.client.get("/api/documents").json()["documents"][0]["filename"], "legacy.txt")
+        self.assertEqual(self.fake.calls, [])
 
     def test_declines_on_invalid_quote(self):
         self.upload()

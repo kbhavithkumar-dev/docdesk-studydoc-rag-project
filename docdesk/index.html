@@ -29,7 +29,7 @@
         <form id="upload-form">
           <label class="picker" for="file">
             <span class="picker-icon" aria-hidden="true">↑</span>
-            <span id="file-label">Choose a document</span>
+            <span id="file-label">Drop a document or browse</span>
             <small>PDF, DOCX, TXT or MD · up to 8 MB</small>
           </label>
           <input class="visually-hidden" id="file" name="file" type="file" accept=".pdf,.docx,.txt,.md" required>
@@ -52,6 +52,7 @@
           <label class="field-label" for="question">Your question</label>
           <textarea id="question" rows="3" maxlength="1000" placeholder="What does the document say about…?" required></textarea>
           <div class="ask-action">
+            <span class="keyboard-hint" aria-hidden="true">Ctrl / ⌘ + Enter</span>
             <button class="primary" id="ask-button" type="submit" disabled>Ask documents <span aria-hidden="true">↗</span></button>
           </div>
         </form>

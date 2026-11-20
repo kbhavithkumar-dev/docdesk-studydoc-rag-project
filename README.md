@@ -1,19 +1,29 @@
-# DocDesk · Document Q&A with Gemini
+# DocDesk
 
-Upload a document, ask a question, and open the citation to see the exact passage behind the answer. DocDesk is a deployment-oriented starter for one user or a small trusted team. It uses real Gemini embeddings and text generation at runtime.
+Ask questions about your own documents and open the cited excerpts to see where each answer came from. DocDesk combines a responsive web interface, FastAPI, PostgreSQL, and Gemini.
 
-This project follows the embed → retrieve → augment → generate flow in the [RAG beginner tutorial](https://laxmi916.github.io/nlp/RAG.html). It keeps the tutorial’s Gemini embedding model and adds file parsing, a browser interface, and persistent storage. It uses SQLite for the index and configures Gemini 2.5 Flash-Lite for generation.
+## Start in VS Code
 
-## 1. Run it in VS Code
+1. Install Docker with Docker Compose. Clone this repository and open its folder in VS Code.
+2. Copy `.env.example` to `.env`. Use `Copy-Item .env.example .env` in PowerShell or `cp .env.example .env` in macOS or Linux.
+3. Create a [Gemini API key in Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` in `.env`. Leave the other values as provided for a loopback-only demo.
+4. Run `docker compose up --build -d --wait` from the repository root.
+5. Open [DocDesk on port 8000](http://localhost:8000). PostgreSQL is available locally on port 5434. Set `WEB_PORT` or `DOCDESK_DB_PORT` if a port is already in use.
 
-Extract the ZIP. Open the extracted `docdesk` folder in VS Code. Open its terminal at the folder containing `requirements.txt`. Install Python 3.12 and create a virtual environment.
+Upload `examples/library-policy.txt`. Ask **How many books can a student borrow, and for how long?** The source says **four books** and **14 calendar days**. Click the citation to see the exact passage. Ask **How much are overdue fines?** to exercise the insufficient-evidence response. Restart the app and confirm the document is still listed.
+
+Use `docker compose logs app` to see server logs and `docker compose down` to stop both services while keeping the database volume.
+
+## Run Python directly
+
+To edit and debug the API in VS Code, start only PostgreSQL with `docker compose up -d --wait db`. Install Python 3.12 and run the commands for your OS.
 
 **Windows PowerShell**
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
+.\.venv\Scripts\python.exe -m uvicorn docdesk.main:create_app --factory --host 127.0.0.1 --port 8000 --limit-concurrency 16
 ```
 
 **macOS or Linux**
@@ -21,90 +31,46 @@ Copy-Item .env.example .env
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-cp .env.example .env
-```
-
-Create a [Gemini API key in Google AI Studio](https://aistudio.google.com/apikey). In VS Code, open `.env` and paste your key after `GEMINI_API_KEY=`. The server sends extracted text, search questions, and selected passages to Google Gemini. Use documents you are permitted to send to that service.
-
-Start the server with the command for your OS.
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn docdesk.main:create_app --factory --host 127.0.0.1 --port 8000 --limit-concurrency 16
-```
-
-```bash
 .venv/bin/python -m uvicorn docdesk.main:create_app --factory --host 127.0.0.1 --port 8000 --limit-concurrency 16
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Keep the terminal running while you use the app. Press Ctrl+C to stop the server.
+## Where to read the code
 
-## 2. Try one complete example
-
-1. Upload `examples/library-policy.txt` and wait for **Document indexed**.
-2. Ask **How many books can a student borrow, and for how long?**. The sample says **four books** and **14 calendar days**. Click the citation numbers to see the passages.
-3. Ask **How much are overdue fines?**. The sample provides no answer, so the expected result is an insufficient-evidence message.
-4. Restart the server with the same `DATA_DIR`. The document should still appear in the library.
-
-Supported uploads are text-based PDF, DOCX, UTF-8 TXT, and UTF-8 Markdown. DOCX includes the main body and table text. Scanned PDFs require OCR before upload. The app accepts one file per request, up to 8 MB and 150 PDF pages. The library limits are 250 documents and 5,000 excerpts.
-
-## 3. Read the code in this order
-
-| File | What to look for |
+| File | What it does |
 | --- | --- |
-| `docdesk/index.html` and `docdesk/static/` | The two forms, browser requests, and expandable citations. |
-| `docdesk/main.py` | The HTTP routes that receive a file or question and return JSON. |
-| `docdesk/documents.py` | How uploaded text is extracted and split into overlapping chunks. |
-| `docdesk/gemini.py` | How the server makes an embedding batch and asks Gemini for a structured answer. |
-| `docdesk/store.py` | How SQLite saves chunks and their vectors, keeps an upload atomic, and ranks search results. |
-| `docdesk/retrieval.py` | How retrieved text becomes evidence and how each quote is checked. |
-| `docdesk/settings.py` | Defaults, runtime limits, and settings read from `.env`. |
-| `tests/test_app.py` | Examples of testing the complete pipeline with controlled provider responses. |
+| `docdesk/index.html`, `docdesk/static/` | File picker, question form, document list, and clickable citations. |
+| `docdesk/main.py` | API routes, request limits, readiness checks, and password protection. |
+| `docdesk/documents.py` | Reads PDFs, DOCX, TXT, and Markdown and splits text into overlapping chunks. |
+| `docdesk/gemini.py` | Requests embeddings and structured answers from Gemini. |
+| `docdesk/store.py` | Uses PostgreSQL connections and transactions to manage the document index. |
+| `docdesk/retrieval.py` | Selects relevant excerpts and checks each citation against the original text. |
 
-### What happens when you upload
+Read [Concepts and workflow](docs/WORKFLOW.md) for diagrams, a worked example, and the limits of the design.
 
-The server extracts readable text and splits it into excerpts of up to 800 characters. Adjacent excerpts may overlap so a sentence near a boundary still has context. Gemini converts each excerpt into a 768-number vector. SQLite saves the original excerpt, its location, and the vector together. The original uploaded binary is discarded. The text remains until the document is removed. Re-uploading identical bytes reuses the existing entry.
+## Database and hosting
 
-### What happens when you ask
+The default database container provisions a dedicated `docdesk` role with its own schema. For hosted PostgreSQL, set `DATABASE_URL` to a DSN for a dedicated login that owns an empty schema and has that schema first in its search path. Enable TLS and follow your provider’s certificate setup. Keep database credentials and the Gemini API key on the server.
 
-The same embedding model converts your question into a vector. The server compares it with the saved excerpt vectors using cosine similarity. It sends up to five qualifying passages to Gemini, which writes short statements and chooses a supporting quote for each. The server verifies that the quoted words exist in the cited excerpt and attaches the filename and page or excerpt number. Checking that a quote exists helps prevent fabricated citations. It cannot prove that the quote supports every interpretation in the answer.
+For shared hosting, put the app behind HTTPS with rate limits and explicit allowed hostnames. Configure `APP_USERNAME`, a unique `APP_PASSWORD` of at least 16 ASCII characters, and `ALLOWED_HOSTS` including the public hostname and `localhost,127.0.0.1` for local probes. Set a proxy upload body limit of 9 MiB and allow up to 180 seconds for indexing. Use a private database, rotate the local demo passwords before hosting, and make regular PostgreSQL backups. `/healthz` checks the process and `/readyz` checks the index database.
 
-## 4. Verify the project
+### Upgrading from the SQLite version
 
-Run the tests from the project folder using the virtual environment’s Python.
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
+Stop the old app and back up its `data` directory. With the new PostgreSQL instance running, the **same embedding model** configured, and no documents in the destination, run this from the repository root using the virtual environment and the host database port.
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+python -m scripts.import_sqlite /path/to/docdesk.sqlite3
 ```
 
-The suite uses a simulated Gemini HTTP service. It covers PDF and DOCX extraction, upload, persistence, duplicate handling, source quotes, scoped search, invalid files, credential protection, and failed indexing. The sample in Step 2 is the live test with your Gemini key. Provider access and quotas depend on your Google project.
+The importer copies documents and chunks atomically without calling Gemini. Open the web app and verify the document list before retiring the old index. Changing the embedding model requires a fresh index and re-uploading the source files.
 
-## 5. Deployment
+## Tests and limitations
 
-Run the same app in Docker with a persistent named volume. Pass `DATA_DIR=/data` so the container writes to that volume.
+Run `python -m unittest discover -s tests -v` with the virtual environment active. To include API and persistence tests, set `DOCDESK_TEST_DATABASE_URL` to a **disposable** PostgreSQL database whose login can create test schemas. These tests use controlled Gemini responses, so they require no API key. To check live Gemini, complete the sample-file walkthrough above.
 
-```bash
-docker build -t docdesk .
-docker run --rm --name docdesk --env-file .env -e DATA_DIR=/data -p 127.0.0.1:8000:8000 -v docdesk-data:/data docdesk
-```
+- Supports PDF with selectable text, DOCX main body and tables, and UTF-8 TXT or Markdown. Scans require OCR before upload.
+- Maximum 8 MiB per file, 150 pages per PDF, 250 documents, and 5,000 indexed excerpts. Exact similarity search is intended for this small scale.
+- Citations prove that a quote exists in an excerpt. Review the source to confirm that it supports the answer.
+- Gemini receives document chunks, questions, and retrieved excerpts. Upload only documents you are allowed to send to the provider.
+- The library is shared by authenticated users in one deployment. Anonymous uploads, per-user access, and OCR are outside this design.
 
-The default bind address is local. For a shared server, keep the container port private behind an HTTPS reverse proxy, forward the original `Host` header, set `ALLOWED_HOSTS` to the deployment hostname, and configure `APP_USERNAME` plus an ASCII `APP_PASSWORD` of at least 16 characters. Configure the proxy to rate-limit requests, cap upload bodies at 9 MiB, and allow up to 180 seconds for indexing. The app uses one shared library and one credential pair. It is designed for trusted users. An internet-facing service that accepts anonymous files needs isolated parsing workers, per-user access controls, monitoring, and separate deployment testing.
-
-`GET /healthz` checks server liveness. Keep the data volume across updates. For an offline backup, stop the app before copying the database directory. If you change the embedding model, point `DATA_DIR` at a new empty directory and re-upload. The configured embedding model must support the Gemini retrieval task types used by this app. The chat model can change without re-indexing.
-
-For a managed proxy, standard `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` environment variables are supported by the server’s HTTP client. Set any required trusted CA with `SSL_CERT_FILE`. Keep proxy credentials and the Gemini key out of source control.
-
-### Troubleshooting
-
-| Symptom | Check |
-| --- | --- |
-| Upload says the API key is missing | Check that `.env` is beside `requirements.txt`, then restart the app. |
-| Gemini rejected the request | Check API access for the key and the configured model names in Google AI Studio. |
-| Gemini returned a quota error | Check your project limits. Large files make several embedding batches. |
-| No readable text found | If you cannot select PDF text, run OCR and re-upload. |
-| Evidence is missing for a known answer | Check the selected document and try a more specific question. `MIN_SIMILARITY` controls which excerpts qualify. Evaluate changes with questions you can verify. |
-
-[Gemini embedding API](https://ai.google.dev/api/embeddings) · [Gemini generation API](https://ai.google.dev/api/generate-content)
+The indexing and retrieval pattern follows the [original Gemini RAG tutorial](https://laxmi916.github.io/nlp/RAG.html).

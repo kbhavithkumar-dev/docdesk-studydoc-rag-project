@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from dotenv import load_dotenv
+from psycopg.conninfo import make_conninfo
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 MAX_DOCUMENT_CHUNKS = 400
@@ -16,7 +17,7 @@ DIMENSIONS = 768
 
 @dataclass(frozen=True)
 class Settings:
-    data_dir: Path = Path("data")
+    database_url: str = field(default="", repr=False)
     api_key: str = field(default="", repr=False)
     embedding_model: str = "gemini-embedding-001"
     chat_model: str = "gemini-2.5-flash-lite"
@@ -53,8 +54,18 @@ class Settings:
         ]
         if any(not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", model) for model in models):
             raise ValueError("Use plain Gemini model names, without the models/ prefix.")
+        database_url = os.getenv("DATABASE_URL", "").strip()
+        if not database_url:
+            db_password = os.getenv("DOCDESK_DB_PASSWORD", "")
+            if not db_password:
+                raise ValueError("Set DATABASE_URL or DOCDESK_DB_PASSWORD in .env before starting DocDesk.")
+            database_url = make_conninfo(
+                host=os.getenv("DOCDESK_DB_HOST", "127.0.0.1"),
+                port=os.getenv("DOCDESK_DB_PORT", "5434"),
+                dbname="docdesk", user="docdesk", password=db_password,
+            )
         return cls(
-            data_dir=Path(os.getenv("DATA_DIR", "data")),
+            database_url=database_url,
             api_key=os.getenv("GEMINI_API_KEY", "").strip(),
             embedding_model=models[0],
             chat_model=models[1],

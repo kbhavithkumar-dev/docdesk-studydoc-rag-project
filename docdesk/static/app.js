@@ -5,6 +5,8 @@ const byId = (id) => document.getElementById(id);
 const uploadForm = byId("upload-form");
 const askForm = byId("ask-form");
 const file = byId("file");
+const picker = uploadForm.querySelector(".picker");
+const pickerText = "Drop a document or browse";
 const scope = byId("scope");
 const question = byId("question");
 let documents = [];
@@ -95,12 +97,38 @@ async function refreshDocuments() {
   updateControls();
 }
 
+// The existing file input still provides keyboard and screen-reader access.
+picker.addEventListener("dragover", (event) => {
+  if (!event.dataTransfer.types.includes("Files")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = busy ? "none" : "copy";
+  if (!busy) picker.classList.add("dragging");
+});
+picker.addEventListener("dragleave", () => picker.classList.remove("dragging"));
+picker.addEventListener("drop", (event) => {
+  event.preventDefault();
+  picker.classList.remove("dragging");
+  if (busy) return;
+  if (event.dataTransfer.files.length !== 1) {
+    feedback("library-status", "Drop one document at a time.", true);
+    return;
+  }
+  file.files = event.dataTransfer.files;
+  file.dispatchEvent(new Event("change"));
+});
+
 file.addEventListener("change", () => {
-  byId("file-label").textContent = file.files[0]?.name ?? "Choose a document";
+  byId("file-label").textContent = file.files[0]?.name ?? pickerText;
   feedback("library-status", "");
   updateControls();
 });
 question.addEventListener("input", updateControls);
+question.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    if (!byId("ask-button").disabled) askForm.requestSubmit();
+  }
+});
 
 uploadForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -115,7 +143,7 @@ uploadForm.addEventListener("submit", (event) => {
   perform("library-status", "Extracting text and creating embeddings…", async () => {
     const result = await request("/api/documents", {method: "POST", body: form});
     uploadForm.reset();
-    byId("file-label").textContent = "Choose a document";
+    byId("file-label").textContent = pickerText;
     await refreshDocuments();
     feedback("library-status", result.duplicate ? "This file is already indexed." : "Document indexed.");
   });

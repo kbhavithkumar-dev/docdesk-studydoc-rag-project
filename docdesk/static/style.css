@@ -2,7 +2,7 @@
 :root {
   font-family: "Segoe UI", system-ui, sans-serif;
   color: #142444;
-  background: #f0f4fa;
+  background: linear-gradient(160deg, #eaf2ff, #f3f6fb 52%) fixed;
   --navy: #102141;
   --blue: #2459d8;
   --muted: #52647c;
@@ -50,7 +50,7 @@ h2 { font-size: 1.2rem; letter-spacing: -.025em; margin: 0; }
   border-radius: 12px; background: #f8faff; cursor: pointer; text-align: center;
   overflow-wrap: anywhere; color: #204486; font-weight: 700;
 }
-.picker:hover { background: var(--soft); }
+.picker:hover, .picker.dragging { background: var(--soft); border-color: var(--blue); }
 .picker-icon { font-size: 1.3rem; line-height: 1; font-weight: 600; }
 .picker small, .muted { color: var(--muted); font-weight: 400; font-size: .82rem; }
 button { border-radius: 9px; padding: 10px 14px; font-weight: 700; }
@@ -72,7 +72,8 @@ select, textarea { width: 100%; border: 1px solid #bacbe3; border-radius: 9px; c
 select { margin-bottom: 16px; }
 textarea { resize: vertical; min-height: 88px; line-height: 1.45; }
 textarea::placeholder { color: #61728a; }
-.ask-action { margin-top: 9px; text-align: right; }
+.ask-action { margin-top: 9px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.keyboard-hint { color: var(--muted); font-size: .78rem; }
 .feedback { margin: 11px 0 0; color: var(--muted); font-size: .87rem; }
 .feedback:empty { margin: 0; }
 .feedback[data-error="true"] { color: #9c2236; }

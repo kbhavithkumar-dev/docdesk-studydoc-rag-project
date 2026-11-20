@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 import secrets
-import sqlite3
+import psycopg
+from psycopg_pool import PoolTimeout
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -92,18 +93,22 @@ class RequestLimits:
 def create_app(settings: Settings | None = None, *, transport: httpx.BaseTransport | None = None):
     """Construct an app. Tests can pass a fake HTTP transport for Gemini."""
     settings = settings or Settings.from_env()
-    store = Store(settings.data_dir / "docdesk.sqlite3", settings.embedding_model)
+    store = Store(settings.database_url, settings.embedding_model)
 
     @asynccontextmanager
     async def lifespan(app):
-        store.initialize()
-        # Reuse connections across requests. A timeout bounds stalled provider calls.
-        with httpx.Client(timeout=httpx.Timeout(45, connect=8), transport=transport) as client:
-            app.state.gemini = Gemini(settings, client)
-            yield
+        # Pool startup and database setup are blocking, so run them off the event loop.
+        try:
+            await run_in_threadpool(store.open)
+            await run_in_threadpool(store.initialize)
+            with httpx.Client(timeout=httpx.Timeout(45, connect=8), transport=transport) as client:
+                app.state.gemini = Gemini(settings, client)
+                yield
+        finally:
+            await run_in_threadpool(store.close)
 
     app = FastAPI(
-        title="DocDesk", version="1.0.0", lifespan=lifespan,
+        title="DocDesk", version="2.0.0", lifespan=lifespan,
         docs_url=None, redoc_url=None, openapi_url=None,
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
@@ -127,15 +132,20 @@ def create_app(settings: Settings | None = None, *, transport: httpx.BaseTranspo
         LOGGER.warning("Gemini request failed for %s with status %s", request.url.path, exc.status)
         return JSONResponse({"detail": str(exc)}, exc.status)
 
-    @app.exception_handler(sqlite3.OperationalError)
-    async def database_failure(request: Request, exc: sqlite3.OperationalError):
-        LOGGER.error("SQLite operation failed with code %s", getattr(exc, "sqlite_errorname", "unknown"))
+    @app.exception_handler(PoolTimeout)
+    @app.exception_handler(psycopg.Error)
+    async def database_failure(request: Request, exc: Exception):
+        LOGGER.error("PostgreSQL operation failed with code %s", getattr(exc, "sqlstate", None))
         return JSONResponse({"detail": "The document index is temporarily unavailable. Try again."}, 503)
 
     @app.get("/healthz")
     def health():
-        # Startup already checked SQLite. This is a process liveness endpoint.
         return {"status": "ok"}
+
+    @app.get("/readyz")
+    def readiness():
+        store.ping()
+        return {"status": "ready"}
 
     @app.get("/", dependencies=[Depends(authorize)])
     def home():
