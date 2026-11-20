@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Business Data Query Assistant</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="section-name">Sales reporting</p>
+      <h1>Business Data Query Assistant</h1>
+      <p>Ask about orders, products, or revenue in plain English.</p>
+    </header>
+    <section class="card" aria-labelledby="question-label">
+      <p id="mode" hidden>Demo mode uses the example questions below.</p>
+      <form id="question-form">
+        <label id="question-label" for="question">Your question</label>
+        <textarea id="question" rows="3" maxlength="500" required placeholder="Which region made the most revenue?"></textarea>
+        <button id="ask-button" class="primary">Run query</button>
+      </form>
+      <div id="examples" aria-label="Example questions"></div>
+      <p id="status" role="status"></p>
+    </section>
+    <section id="result" class="card" aria-labelledby="result-title" hidden>
+      <h2 id="result-title">Result</h2>
+      <p id="summary"></p>
+      <div class="table-wrap" tabindex="0" aria-label="Query results">
+        <table aria-label="Query results">
+          <thead><tr id="columns"></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <details>
+        <summary>View SQL</summary>
+        <pre><code id="sql"></code></pre>
+      </details>
+    </section>
+  </main>
+</body>
+</html>
