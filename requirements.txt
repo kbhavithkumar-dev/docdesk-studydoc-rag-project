@@ -1,0 +1,12 @@
+# Direct dependencies pinned to the versions used to verify this project.
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn==0.52.1
+httpx[socks]==0.28.1
+pydantic==2.13.4
+python-dotenv==1.2.2
+python-multipart==0.0.32
+numpy==2.3.5
+pypdf==6.21.4
+python-docx==1.2.0
+lxml==6.1.1

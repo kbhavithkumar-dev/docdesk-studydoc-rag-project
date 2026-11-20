@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>DocDesk</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap brand">
+      <span class="brand-mark" aria-hidden="true"><span></span></span>
+      <span>DocDesk</span>
+    </div>
+  </header>
+  <main class="wrap">
+    <section class="intro">
+      <h1>Ask your documents</h1>
+      <p>Upload a document, ask a question, and see the passage behind each answer.</p>
+    </section>
+    <div class="workspace">
+      <aside class="panel library" aria-labelledby="library-title">
+        <div class="panel-heading">
+          <h2 id="library-title">Documents</h2>
+          <span class="count" id="count" aria-label="0 documents">0</span>
+        </div>
+        <form id="upload-form">
+          <label class="picker" for="file">
+            <span class="picker-icon" aria-hidden="true">↑</span>
+            <span id="file-label">Choose a document</span>
+            <small>PDF, DOCX, TXT or MD · up to 8 MB</small>
+          </label>
+          <input class="visually-hidden" id="file" name="file" type="file" accept=".pdf,.docx,.txt,.md" required>
+          <button class="secondary wide" id="upload-button" type="submit" disabled>Upload and index</button>
+        </form>
+        <p class="feedback" id="library-status" aria-live="polite"></p>
+        <ul class="documents" id="documents" aria-label="Indexed documents"></ul>
+        <p class="muted empty-library" id="library-empty">No documents uploaded yet.</p>
+      </aside>
+
+      <section class="panel conversation" aria-labelledby="question-title">
+        <div class="panel-heading">
+          <h2 id="question-title">Ask a question</h2>
+        </div>
+        <form id="ask-form">
+          <label class="field-label" for="scope">Search in</label>
+          <select id="scope">
+            <option value="">All documents</option>
+          </select>
+          <label class="field-label" for="question">Your question</label>
+          <textarea id="question" rows="3" maxlength="1000" placeholder="What does the document say about…?" required></textarea>
+          <div class="ask-action">
+            <button class="primary" id="ask-button" type="submit" disabled>Ask documents <span aria-hidden="true">↗</span></button>
+          </div>
+        </form>
+        <p class="feedback" id="ask-status" role="status"></p>
+        <section class="answer" id="answer" aria-labelledby="answer-title" hidden>
+          <h2 id="answer-title" tabindex="-1">Answer</h2>
+          <div id="answer-text"></div>
+          <div id="sources"></div>
+        </section>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
